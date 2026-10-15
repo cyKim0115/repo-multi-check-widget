@@ -532,17 +532,27 @@ function renderQuickPull(vcs: Vcs) {
   if (run) {
     const spinner = document.createElement("span");
     spinner.className = "quick-pull-spinner";
-    btn.replaceChildren(spinner, `${ui.verb} ${run.done}/${run.total}`);
-    btn.title = `${ui.verb} 중…`;
+    btn.replaceChildren(spinner, `${run.done}/${run.total}`);
+    btn.title = `${ui.verb} 중… ${run.done}/${run.total}`;
     btn.setAttribute("aria-label", `${ui.verb} 진행 중 ${run.done}/${run.total}`);
   } else {
-    const glyph = document.createElement("span");
-    glyph.className = "quick-pull-glyph";
-    glyph.textContent = "↓";
-    btn.replaceChildren(glyph, `${ui.verb} ${pending}`);
+    btn.replaceChildren(pullIcon(), String(pending));
     btn.title = `${pending}개 저장소 한 번에 ${ui.verb}\n${ui.hint}`;
     btn.setAttribute("aria-label", `${pending}개 저장소 한 번에 ${ui.verb}`);
   }
+}
+
+/** Arrow down into a tray — the button's label; the verb lives in the tooltip. */
+function pullIcon(): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "quick-pull-icon");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", "M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10");
+  svg.append(path);
+  return svg;
 }
 
 function renderAll() {

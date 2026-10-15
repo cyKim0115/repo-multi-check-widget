@@ -141,9 +141,15 @@ body {
   display: none;
 }
 
-.quick-pull-glyph {
-  font-size: 11px;
-  line-height: 1;
+.quick-pull-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .quick-pull-spinner {
