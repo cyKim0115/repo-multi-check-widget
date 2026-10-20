@@ -58,6 +58,10 @@ pub struct RepoConfig {
     /// Off means the widget behaves like a normal window and can go behind others.
     #[serde(default = "default_always_on_top")]
     pub always_on_top: bool,
+    /// Git's share of the list space when both sections show, set by dragging
+    /// the handle between them. `None` splits by repo count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_split: Option<f64>,
 }
 
 impl Default for RepoConfig {
@@ -69,6 +73,7 @@ impl Default for RepoConfig {
             svn_enabled: false,
             svn_repos: Vec::new(),
             always_on_top: default_always_on_top(),
+            section_split: None,
         }
     }
 }
@@ -135,6 +140,7 @@ fn seed_config() -> RepoConfig {
         svn_enabled: false,
         svn_repos: Vec::new(),
         always_on_top: default_always_on_top(),
+        section_split: None,
     }
 }
 

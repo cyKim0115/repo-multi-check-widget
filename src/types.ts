@@ -27,6 +27,8 @@ export type RepoConfig = {
   svn_repos?: RepoEntry[];
   /** Off means the widget behaves like a normal window and can go behind others. */
   always_on_top?: boolean;
+  /** Git's share of the list space when both sections show; missing splits by repo count. */
+  section_split?: number | null;
 };
 
 export type RepoStatus = {

@@ -33,6 +33,21 @@ fn get_config() -> RepoConfig {
 
 #[tauri::command]
 fn set_config(config: RepoConfig) -> Result<(), String> {
+    // The split belongs to the widget's handle, not the settings form: keep the
+    // saved one so a settings window opened before a drag cannot roll it back.
+    let config = RepoConfig {
+        section_split: load_config().section_split,
+        ..config
+    };
+    save_config(&config)
+}
+
+/// Saves the Git/SVN split from the widget's handle. No `config-saved` event:
+/// nothing needs a rescan, and the widget already shows the new split.
+#[tauri::command]
+fn set_section_split(split: Option<f64>) -> Result<(), String> {
+    let mut config = load_config();
+    config.section_split = split.filter(|s| s.is_finite()).map(|s| s.clamp(0.0, 1.0));
     save_config(&config)
 }
 
@@ -265,6 +280,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             set_config,
+            set_section_split,
             scan_all_repos,
             scan_one_repo,
             validate_repo,

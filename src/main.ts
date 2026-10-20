@@ -74,6 +74,10 @@ const LABEL_HEIGHT = 24;
 /** Row budget for a single visible section vs. two stacked ones. */
 const MAX_VISIBLE_ROWS = 5;
 const MAX_VISIBLE_ROWS_SPLIT = 4;
+/** While Git and SVN share the window, neither list gets less than this many rows. */
+const MIN_SPLIT_ROWS = 1.25;
+/** Fallback for the handle between the sections (it is also their spacing). */
+const SPLITTER_HEIGHT = 6;
 const SCROLL_ACCEL_BASE = 0.07;
 const SCROLL_ACCEL_STEP = 0.035;
 const SCROLL_ACCEL_BURST_MAX = 7;
@@ -97,6 +101,8 @@ let lastGitRepos: RepoStatus[] = [];
 let lastSvnRepos: RepoStatus[] = [];
 let gitEnabled = true;
 let svnEnabled = false;
+/** Git's share of the list space, set by dragging the handle; null splits by row count. */
+let sectionSplit: number | null = null;
 let windowAutoSized = false;
 let userResizedWindow = false;
 /** Resize events before this time are echoes of our own auto-fit. */
@@ -397,6 +403,8 @@ function setupRepoScroll() {
     if (!isProgrammaticResize() && windowAutoSized) {
       userResizedWindow = true;
     }
+    // The split is applied in pixels, so a new list space needs a fresh clamp.
+    applySectionSplit();
     updateScrollFade();
   });
 
@@ -430,6 +438,16 @@ function visibleRows(count: number): number {
   return Math.min(Math.max(1, count), visibleRowBudget());
 }
 
+function bothSections(): boolean {
+  return gitEnabled && svnEnabled;
+}
+
+/** Rows a section is sized for; next to the other section it never starts below the handle's minimum. */
+function allottedRows(count: number): number {
+  const rows = visibleRows(count);
+  return bothSections() ? Math.max(MIN_SPLIT_ROWS, rows) : rows;
+}
+
 function cssPx(value: string): number {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -444,7 +462,7 @@ function measureLayout(): {
   chrome: number;
   row: number;
   label: number;
-  gap: number;
+  splitter: number;
   empty: number;
 } {
   const widget = document.querySelector<HTMLElement>(".widget");
@@ -452,13 +470,6 @@ function measureLayout(): {
 
   const measuredChrome = widget ? widget.offsetHeight - sections.offsetHeight : 0;
   const chrome = measuredChrome > 0 ? measuredChrome : BASE_HEIGHT;
-
-  // A switched-off section keeps its old rows in the DOM, so only visible ones count.
-  const item = document.querySelector<HTMLElement>(".repo-section:not(.hidden) .repo-item");
-  const row =
-    item && item.parentElement && item.offsetHeight > 0
-      ? item.offsetHeight + cssPx(getComputedStyle(item.parentElement).rowGap)
-      : ROW_HEIGHT;
 
   const labelEl = document.querySelector<HTMLElement>(".repo-section:not(.hidden) .section-label");
   const label =
@@ -469,7 +480,103 @@ function measureLayout(): {
   const emptyEl = $("sections-empty");
   const empty = emptyEl.offsetHeight > 0 ? emptyEl.offsetHeight : ROW_HEIGHT;
 
-  return { chrome, row, label, gap: cssPx(getComputedStyle(sections).rowGap), empty };
+  const splitterEl = $("section-splitter");
+  const splitter = splitterEl.offsetHeight > 0 ? splitterEl.offsetHeight : SPLITTER_HEIGHT;
+
+  return { chrome, row: measureRow(), label, splitter, empty };
+}
+
+/** One row of a list: the rendered item plus the gap to the next. */
+function measureRow(): number {
+  // A switched-off section keeps its old rows in the DOM, so only visible ones count.
+  const item = document.querySelector<HTMLElement>(".repo-section:not(.hidden) .repo-item");
+  return item && item.parentElement && item.offsetHeight > 0
+    ? item.offsetHeight + cssPx(getComputedStyle(item.parentElement).rowGap)
+    : ROW_HEIGHT;
+}
+
+/** Height the two lists share; the labels and the handle take a fixed part of the window. */
+function listSpace(): number {
+  return $("repo-scroll-wrap").offsetHeight + $("svn-scroll-wrap").offsetHeight;
+}
+
+/** Keeps both lists at least MIN_SPLIT_ROWS rows tall, or half each when the window is too short for that. */
+function clampGitList(gitPx: number, total: number): number {
+  const min = Math.min(MIN_SPLIT_ROWS * measureRow(), total / 2);
+  return Math.min(Math.max(gitPx, min), total - min);
+}
+
+/**
+ * Shares the list space between Git and SVN: the dragged split if there is one,
+ * otherwise by row count — the same rows the window height was fitted to, which
+ * a plain `flex: 1` (an even split) would not match.
+ */
+function applySectionSplit() {
+  if (!bothSections()) return;
+  const gitRows = allottedRows(lastGitRepos.length);
+  const share = sectionSplit ?? gitRows / (gitRows + allottedRows(lastSvnRepos.length));
+  const total = listSpace();
+  const gitPx = total > 0 ? clampGitList(share * total, total) : share;
+  const svnPx = total > 0 ? total - gitPx : 1 - share;
+  $("git-section").style.flexGrow = String(gitPx);
+  $("svn-section").style.flexGrow = String(svnPx);
+}
+
+/**
+ * Dragging the handle moves the boundary between the two lists while the
+ * window height stays; the split is saved once the drag ends. It only works
+ * while both sections show — otherwise the handle is hidden.
+ */
+function setupSectionSplitter() {
+  const handle = $("section-splitter");
+  const widget = document.querySelector<HTMLElement>(".widget");
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !bothSections()) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startGit = $("repo-scroll-wrap").offsetHeight;
+    const before = sectionSplit;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add("dragging");
+    widget?.classList.add("resizing-sections");
+
+    const move = (ev: PointerEvent) => {
+      const total = listSpace();
+      if (!bothSections() || total <= 0) return;
+      sectionSplit = clampGitList(startGit + ev.clientY - startY, total) / total;
+      applySectionSplit();
+      updateScrollFade();
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.classList.remove("dragging");
+      widget?.classList.remove("resizing-sections");
+      if (sectionSplit !== before) void saveSectionSplit();
+    };
+    handle.addEventListener("pointermove", move);
+    // Fires after pointerup and pointercancel alike, so the drag always ends once.
+    handle.addEventListener("lostpointercapture", end, { once: true });
+  });
+}
+
+async function saveSectionSplit() {
+  if (PREVIEW) return;
+  try {
+    await invoke("set_section_split", { split: sectionSplit });
+  } catch (e) {
+    setStatus(`split not saved: ${String(e)}`);
+  }
+}
+
+/** Only the handle changes the split, so it is read once at start and later config reads leave it be. */
+async function loadSectionSplit() {
+  try {
+    const config = (await invoke("get_config")) as RepoConfig;
+    sectionSplit = config.section_split ?? null;
+  } catch {
+    /* dev without tauri */
+  }
 }
 
 async function maybeAutoResizeWindow() {
@@ -482,15 +589,15 @@ async function maybeAutoResizeWindow() {
   const signature = `${gitEnabled}:${svnEnabled}:${counts.join(",")}:${Math.round(layout.row)}`;
   if (windowAutoSized && signature === lastAutoSizedSignature) return;
 
-  // Each visible section is its label plus its row budget; sections are spaced by the gap.
+  // Each visible section is its label plus its rows; two sections have the handle between them.
   let height = layout.chrome;
   if (counts.length === 0) {
     height += layout.empty;
   } else {
     for (const count of counts) {
-      height += layout.label + visibleRows(count) * layout.row;
+      height += layout.label + allottedRows(count) * layout.row;
     }
-    height += layout.gap * (counts.length - 1);
+    height += layout.splitter * (counts.length - 1);
   }
 
   try {
@@ -559,11 +666,7 @@ function renderAll() {
   $("git-section").classList.toggle("hidden", !gitEnabled);
   $("svn-section").classList.toggle("hidden", !svnEnabled);
   $("sections-empty").classList.toggle("hidden", gitEnabled || svnEnabled);
-
-  // The window height is budgeted per section, so the sections must grow in the
-  // same proportion — a plain `flex: 1` would split the space evenly instead.
-  $("git-section").style.flexGrow = String(visibleRows(lastGitRepos.length));
-  $("svn-section").style.flexGrow = String(visibleRows(lastSvnRepos.length));
+  $("section-splitter").classList.toggle("hidden", !bothSections());
 
   renderSummary();
   if (gitEnabled) {
@@ -575,6 +678,8 @@ function renderAll() {
     renderQuickPull("svn");
   }
 
+  // After the lists: the minimum is measured from a rendered row.
+  applySectionSplit();
   void maybeAutoResizeWindow();
   updateScrollFade();
 }
@@ -978,6 +1083,7 @@ async function openSettings() {
 
 async function boot() {
   setupRepoScroll();
+  setupSectionSplitter();
 
   document.addEventListener("contextmenu", (e) => {
     if ((e.target as Element).closest(".repo-item")) return;
@@ -1049,7 +1155,7 @@ async function boot() {
     /* browser preview */
   }
 
-  await loadOpenTarget();
+  await Promise.all([loadOpenTarget(), loadSectionSplit()]);
   void refresh({ doFetch: false });
 
   let interval = 300_000;

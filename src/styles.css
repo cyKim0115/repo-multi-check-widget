@@ -64,19 +64,64 @@ body {
   text-align: right;
 }
 
+/* No gap: the splitter between Git and SVN is the spacing (only it sits between two items). */
 .sections {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+}
+
+.section-splitter {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  height: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+/* A 6px strip is hard to hit, so the grab area reaches into both neighbours. */
+.section-splitter::before {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+}
+
+.section-splitter.hidden {
+  display: none;
+}
+
+.section-splitter-grip {
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  transition:
+    background 0.15s ease,
+    width 0.15s ease;
+}
+
+.section-splitter:hover .section-splitter-grip,
+.section-splitter.dragging .section-splitter-grip {
+  width: 44px;
+  background: var(--accent);
+}
+
+/* Pointer capture keeps the drag on the handle; this keeps its cursor too. */
+.widget.resizing-sections,
+.widget.resizing-sections * {
+  cursor: row-resize !important;
 }
 
 .repo-section {
   /*
-   * flex-grow is set per render from each section's row count (main.ts). The
-   * basis is the label row, so only the list space is shared by row count —
-   * a zero basis would hand the bigger section part of the smaller one's label.
+   * flex-grow is set per render from the Git/SVN split (main.ts). The basis is
+   * the label row, so only the list space is shared by the split — a zero
+   * basis would hand the bigger section part of the smaller one's label.
    */
   flex: 1 1 24px;
   min-height: 0;
