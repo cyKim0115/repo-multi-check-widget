@@ -20,3 +20,10 @@ thiserror = "2"
 auto-launch = "0.5"
 tauri-plugin-window-state = "2"
 winreg = "0.55"
+windows-version = "0.1"
+# 유리 효과(glass.rs): 위젯 뒤 화면을 캡처해 웹뷰로 넘긴다. tauri가 쓰는 windows 0.61과 버전을 맞춘다.
+windows = { version = "0.61", features = [
+  "Win32_Graphics_Gdi",
+  "Win32_UI_HiDpi",
+  "Win32_UI_WindowsAndMessaging",
+] }

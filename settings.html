@@ -37,6 +37,17 @@
           <span class="settings-toggle-text">항상 다른 창 위에 표시</span>
         </label>
         <p class="settings-hint">끄면 일반 창처럼 동작해 다른 창이 위젯으로 올라올 수 있습니다.</p>
+        <label class="settings-toggle" id="glass-label">
+          <input id="glass-checkbox" type="checkbox" />
+          <span class="settings-toggle-text">배경 흐림 (유리 효과)</span>
+        </label>
+        <p id="glass-hint" class="settings-hint">위젯 뒤 화면을 흐리게 비춥니다.</p>
+        <label class="settings-range" id="glass-blur-label">
+          <span class="settings-toggle-text">흐림 반경</span>
+          <input id="glass-blur" type="range" min="0" max="32" step="1" />
+          <output id="glass-blur-value">12px</output>
+        </label>
+        <p class="settings-hint">위젯 뒤 화면을 잠깐씩 캡처해 흐립니다. 캡처하는 순간에는 스크린샷·화면 공유에서 위젯이 빠질 수 있습니다.</p>
       </section>
 
       <section class="settings-section">

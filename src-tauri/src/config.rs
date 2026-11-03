@@ -42,6 +42,15 @@ fn default_git_enabled() -> bool {
     true
 }
 
+/// 배경 흐림은 기본으로 켠다. 지원하지 않는 Windows에서는 glass.rs가 알아서 끈다.
+fn default_glass() -> bool {
+    true
+}
+
+fn default_glass_blur() -> f64 {
+    crate::glass::DEFAULT_BLUR_PX
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoConfig {
     pub repos: Vec<RepoEntry>,
@@ -58,6 +67,12 @@ pub struct RepoConfig {
     /// Off means the widget behaves like a normal window and can go behind others.
     #[serde(default = "default_always_on_top")]
     pub always_on_top: bool,
+    /// 배경 흐림(유리 효과). 위젯 뒤 화면을 캡처해 카드 안에서 흐린다.
+    #[serde(default = "default_glass")]
+    pub glass: bool,
+    /// 흐림 반경(CSS px, 0..32).
+    #[serde(default = "default_glass_blur")]
+    pub glass_blur: f64,
     /// Git's share of the list space when both sections show, set by dragging
     /// the handle between them. `None` splits by repo count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,6 +88,8 @@ impl Default for RepoConfig {
             svn_enabled: false,
             svn_repos: Vec::new(),
             always_on_top: default_always_on_top(),
+            glass: default_glass(),
+            glass_blur: default_glass_blur(),
             section_split: None,
         }
     }
@@ -140,6 +157,8 @@ fn seed_config() -> RepoConfig {
         svn_enabled: false,
         svn_repos: Vec::new(),
         always_on_top: default_always_on_top(),
+        glass: default_glass(),
+        glass_blur: default_glass_blur(),
         section_split: None,
     }
 }

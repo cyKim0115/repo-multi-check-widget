@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { glassBlur, glassEnabled } from "./glass";
 import { formatSummaryIcons, renderStatusIcons, rowClass } from "./status-icons";
 import { DEFAULT_OPEN_TARGET } from "./open-targets";
 import type { OpenTarget } from "./open-targets";
@@ -156,6 +157,64 @@ function $(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id}`);
   return el;
+}
+
+/** 카드 투명도는 배경 흐림이 실제로 켜졌을 때만 낮춘다. 블러 없이 낮추면 뒤 글자가 선명하게 비친다. */
+function setGlassClass(applied: boolean) {
+  document.documentElement.classList.toggle("glass", applied);
+  if (!applied) {
+    const canvas = $("glass-backdrop") as HTMLCanvasElement;
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+function setGlassBlur(px: number) {
+  document.documentElement.style.setProperty("--glass-blur", `${px}px`);
+}
+
+/** glass.rs가 보내는 캡처 정보. 크기와 여백은 물리 픽셀이다. */
+type GlassFrame = {
+  seq: number;
+  width: number;
+  height: number;
+  margin: number;
+};
+
+let glassBusy = false;
+let glassPending: GlassFrame | null = null;
+
+/**
+ * 위젯 뒤를 캡처한 화면을 카드 아래 캔버스에 그린다. 블러는 CSS(--glass-blur)가 건다.
+ * 받아 오는 중에 새 프레임이 오면 마지막 것만 남겨 두었다가 이어서 그린다.
+ */
+async function drawGlassFrame(frame: GlassFrame) {
+  glassBusy = true;
+  try {
+    const response = await fetch(`http://glassbg.localhost/frame?${frame.seq}`);
+    const bytes = new Uint8ClampedArray(await response.arrayBuffer());
+    if (bytes.length !== frame.width * frame.height * 4) return;
+    const canvas = $("glass-backdrop") as HTMLCanvasElement;
+    if (canvas.width !== frame.width || canvas.height !== frame.height) {
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+    }
+    // 캔버스 왼쪽 위가 창 왼쪽 위에서 여백만큼 밖에 오도록 둔다. 카드 테두리 두께도 뺀다.
+    const scale = window.devicePixelRatio || 1;
+    const border = document.querySelector<HTMLElement>(".widget")?.clientLeft ?? 0;
+    canvas.style.width = `${frame.width / scale}px`;
+    canvas.style.height = `${frame.height / scale}px`;
+    canvas.style.left = `${-frame.margin / scale - border}px`;
+    canvas.style.top = `${-frame.margin / scale - border}px`;
+    canvas.getContext("2d")?.putImageData(new ImageData(bytes, frame.width, frame.height), 0, 0);
+  } catch {
+    /* 다음 프레임에서 다시 그린다 */
+  } finally {
+    glassBusy = false;
+    const next = glassPending;
+    glassPending = null;
+    if (next && document.documentElement.classList.contains("glass")) void drawGlassFrame(next);
+  }
 }
 
 /**
@@ -821,6 +880,20 @@ async function loadOpenTarget() {
   }
 }
 
+/**
+ * 저장된 배경 흐림을 창에 건다. 이후 바꾸는 건 설정 창이 바로 반영하고 결과를 이벤트로 보낸다.
+ * 반경을 먼저 넘겨야 첫 캡처부터 그 반경에 맞는 여백으로 찍는다.
+ */
+async function loadGlass() {
+  try {
+    const config = (await invoke("get_config")) as RepoConfig;
+    await invoke("set_glass_blur", { px: glassBlur(config) });
+    setGlassClass(await invoke<boolean>("set_glass", { enabled: glassEnabled(config) }));
+  } catch {
+    /* dev without tauri */
+  }
+}
+
 /** Scans one section row by row, re-rendering after each like the git flow always has. */
 async function scanSection(
   entries: RepoEntry[],
@@ -1151,11 +1224,26 @@ async function boot() {
       void loadOpenTarget();
       void refresh({ doFetch: false });
     });
+    // 설정 창에서 배경 흐림을 바꾸면 Rust가 캡처를 켜고 끈 뒤 결과를 보내 온다.
+    await listen<boolean>("glass-applied", (event) => {
+      setGlassClass(event.payload);
+    });
+    await listen<number>("glass-blur", (event) => {
+      setGlassBlur(event.payload);
+    });
+    await listen<GlassFrame>("glass-frame", (event) => {
+      if (!document.documentElement.classList.contains("glass")) return;
+      if (glassBusy) {
+        glassPending = event.payload;
+        return;
+      }
+      void drawGlassFrame(event.payload);
+    });
   } catch {
     /* browser preview */
   }
 
-  await Promise.all([loadOpenTarget(), loadSectionSplit()]);
+  await Promise.all([loadOpenTarget(), loadSectionSplit(), loadGlass()]);
   void refresh({ doFetch: false });
 
   let interval = 300_000;

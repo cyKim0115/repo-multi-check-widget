@@ -9,6 +9,9 @@
   --hot: #d46b5b;
   --ok: #7dd3a0;
   --border: rgba(255, 255, 255, 0.08);
+  /* 배경 흐림이 켜졌을 때의 카드. 행이 촘촘하고 10px 회색 글자가 많아 claude-usage(0.85)보다
+     진하게 둔다. 흰 화면 위에서 --muted 글자 대비가 0.88이면 4.7:1, 0.85면 4.3:1이다(계산값). */
+  --bg-glass: rgba(22, 24, 28, 0.88);
   font-family: "Segoe UI", "Malgun Gothic", sans-serif;
 }
 
@@ -34,12 +37,63 @@ body {
   height: 100%;
   padding: 10px 12px 8px;
   border-radius: 12px;
+  /* 배경 흐림을 켜면 캡처 화면도 이 곡선으로 잘린다(overflow: hidden). */
+  corner-shape: squircle;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ── 배경 흐림 ─────────────────────────────────────────────────────
+   glass.rs가 위젯 뒤 화면을 캡처해 보내면 main.ts가 캔버스에 그리고, 여기서 흐린다.
+   쌓는 순서는 캔버스(-2) → 틴트(::before, -1) → 내용이다. */
+.glass-backdrop {
+  display: none;
+}
+
+html.glass .widget {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: transparent;
+  /* 테두리 칸은 overflow 클립 밖이라 캔버스·틴트가 덮지 못해, 흐리지 않은 화면이 1px 비친다.
+     테두리를 틴트 층의 inset 그림자로 옮기고 그만큼 안쪽 여백을 늘린다. */
+  border: 0;
+  padding: 11px 13px 9px;
+}
+
+html.glass .widget::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: squircle;
+  background: var(--bg-glass);
+  box-shadow: inset 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+
+html.glass .glass-backdrop {
+  display: block;
+  position: absolute;
+  z-index: -2;
+  filter: blur(var(--glass-blur, 12px));
+  pointer-events: none;
+}
+
+/* Windows 「투명 효과」를 끄면 흐린 배경을 숨기고 원래 카드 투명도로 돌아간다. */
+@media (prefers-reduced-transparency: reduce) {
+  html.glass .widget::before {
+    background: var(--bg);
+  }
+
+  html.glass .glass-backdrop {
+    display: none;
+  }
 }
 
 .header,
@@ -270,6 +324,46 @@ body {
     rgba(22, 24, 28, 0.55) 45%,
     rgba(22, 24, 28, 0) 100%
   );
+}
+
+/* 유리 효과에서는 위 페이드가 흐린 배경 위에 어두운 띠로 남는다. 띠를 숨기고 목록 자체를
+   가장자리에서 투명하게 지운다. 어느 끝을 지울지는 그대로 updateScrollFade가 띠에 붙이는
+   visible이 정한다. 길이를 @property로 등록해 띠처럼 0.15초 동안 서서히 바뀌게 한다. */
+@property --repo-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --repo-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+html.glass .repo-fade {
+  display: none;
+}
+
+html.glass .repo-scroll {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--repo-fade-top),
+    #000 calc(100% - var(--repo-fade-bottom)),
+    transparent 100%
+  );
+  transition:
+    --repo-fade-top 0.15s ease,
+    --repo-fade-bottom 0.15s ease;
+}
+
+html.glass .repo-scroll-wrap:has(.repo-fade--top.visible) .repo-scroll {
+  --repo-fade-top: 22px;
+}
+
+html.glass .repo-scroll-wrap:has(.repo-fade--bottom.visible) .repo-scroll {
+  --repo-fade-bottom: 22px;
 }
 
 .repo-list {
@@ -643,6 +737,33 @@ body {
 
 .settings-toggle-text {
   font-size: 13px;
+}
+
+.settings-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-range input {
+  flex: 1;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.settings-range output {
+  min-width: 3.2em;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-range:has(input:disabled) {
+  opacity: 0.55;
 }
 
 .settings-repo-list {

@@ -27,6 +27,10 @@ export type RepoConfig = {
   svn_repos?: RepoEntry[];
   /** Off means the widget behaves like a normal window and can go behind others. */
   always_on_top?: boolean;
+  /** 배경 흐림(유리 효과). 없으면 켬이다. 지원하지 않는 Windows에서는 Rust가 끈다. */
+  glass?: boolean;
+  /** 흐림 반경(CSS px, 0..32). 없으면 12px. */
+  glass_blur?: number;
   /** Git's share of the list space when both sections show; missing splits by repo count. */
   section_split?: number | null;
 };

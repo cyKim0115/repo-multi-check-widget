@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { DEFAULT_GLASS_BLUR, glassBlur, glassEnabled } from "./glass";
 import { normalizeOpenTarget, renderOpenTargetPicker } from "./open-target-picker";
 import { DEFAULT_OPEN_TARGET } from "./open-targets";
 import type { RepoConfig, RepoEntry, ValidateResult, Vcs } from "./types";
@@ -12,6 +13,8 @@ let configDraft: RepoConfig = {
   svn_enabled: false,
   svn_repos: [],
   always_on_top: true,
+  glass: true,
+  glass_blur: DEFAULT_GLASS_BLUR,
 };
 let autostartBusy = false;
 /**
@@ -19,6 +22,9 @@ let autostartBusy = false;
  * 버리면 살아 있는 창도 이 값으로 되돌린다. 설정 로드 전에는 null이다.
  */
 let savedAlwaysOnTop: boolean | null = null;
+/** 배경 흐림도 체크·슬라이더 즉시 위젯에 반영하고, 취소하면 이 값으로 되돌린다. */
+let savedGlass: { enabled: boolean; blur: number } | null = null;
+let glassSupported = true;
 
 async function applyAlwaysOnTop(enabled: boolean) {
   try {
@@ -34,6 +40,36 @@ async function revertAlwaysOnTop() {
   if ((configDraft.always_on_top ?? true) === savedAlwaysOnTop) return;
   configDraft.always_on_top = savedAlwaysOnTop;
   await applyAlwaysOnTop(savedAlwaysOnTop);
+}
+
+async function applyGlass(enabled: boolean) {
+  try {
+    await invoke("set_glass", { enabled });
+  } catch {
+    /* browser preview */
+  }
+}
+
+async function applyGlassBlur(px: number) {
+  try {
+    await invoke("set_glass_blur", { px });
+  } catch {
+    /* browser preview */
+  }
+}
+
+/** 저장하지 않고 닫는 모든 경로에서 배경 흐림도 저장된 값으로 되돌린다. */
+async function revertGlass() {
+  if (savedGlass === null) return;
+  const { enabled, blur } = savedGlass;
+  if (glassBlur(configDraft) !== blur) {
+    configDraft.glass_blur = blur;
+    await applyGlassBlur(blur);
+  }
+  if (glassEnabled(configDraft) !== enabled) {
+    configDraft.glass = enabled;
+    await applyGlass(enabled);
+  }
 }
 
 /**
@@ -318,6 +354,9 @@ async function loadConfigDraft() {
   configDraft.svn_repos ??= [];
   configDraft.always_on_top ??= true;
   savedAlwaysOnTop = configDraft.always_on_top;
+  configDraft.glass = glassEnabled(configDraft);
+  configDraft.glass_blur = glassBlur(configDraft);
+  savedGlass = { enabled: configDraft.glass, blur: configDraft.glass_blur };
 }
 
 function renderOpenTargetSettings() {
@@ -329,6 +368,31 @@ function renderOpenTargetSettings() {
 function renderAlwaysOnTopSettings() {
   const checkbox = $("always-on-top-checkbox") as HTMLInputElement;
   checkbox.checked = configDraft.always_on_top ?? true;
+}
+
+/**
+ * 배경 흐림은 캡처에서 위젯을 빼는 기능(Windows 10 2004 이상)이 있어야 한다.
+ * 저장값은 그대로 두고 토글만 막아, 지원하는 PC에서는 같은 설정이 살아 있게 한다.
+ */
+async function renderGlassSettings() {
+  const checkbox = $("glass-checkbox") as HTMLInputElement;
+  const hint = $("glass-hint");
+  glassSupported = await invoke<boolean>("glass_supported").catch(() => false);
+  checkbox.disabled = !glassSupported;
+  checkbox.checked = glassSupported && glassEnabled(configDraft);
+  hint.textContent = glassSupported
+    ? "위젯 뒤 화면을 흐리게 비춥니다."
+    : "이 Windows에서는 쓸 수 없습니다. Windows 10 2004 이상에서 동작합니다.";
+  renderGlassBlur();
+}
+
+/** 반경 슬라이더는 배경 흐림이 켜져 있을 때만 쓴다. */
+function renderGlassBlur() {
+  const slider = $("glass-blur") as HTMLInputElement;
+  const px = glassBlur(configDraft);
+  slider.value = String(px);
+  slider.disabled = !(glassSupported && glassEnabled(configDraft));
+  $("glass-blur-value").textContent = `${px}px`;
 }
 
 /** The list and add form only show while the section is switched on. */
@@ -390,6 +454,7 @@ function addRepoFromForm(kind: Vcs) {
 
 async function closeWindow() {
   await revertAlwaysOnTop();
+  await revertGlass();
   try {
     await invoke("close_settings_window");
   } catch {
@@ -400,6 +465,7 @@ async function closeWindow() {
 async function saveAndClose() {
   await invoke("set_config", { config: configDraft });
   savedAlwaysOnTop = configDraft.always_on_top ?? true;
+  savedGlass = { enabled: glassEnabled(configDraft), blur: glassBlur(configDraft) };
   await emit("config-saved");
   await closeWindow();
 }
@@ -410,6 +476,7 @@ async function refreshView() {
   renderSettingsList("svn");
   renderOpenTargetSettings();
   renderAlwaysOnTopSettings();
+  await renderGlassSettings();
   renderEnabledToggle("git");
   renderEnabledToggle("svn");
   await renderAutostartSettings();
@@ -511,6 +578,23 @@ function bindUi() {
     void applyAlwaysOnTop(alwaysOnTopCheckbox.checked);
   });
 
+  const glassCheckbox = $("glass-checkbox") as HTMLInputElement;
+  glassCheckbox.addEventListener("change", () => {
+    if (!glassSupported) return;
+    configDraft.glass = glassCheckbox.checked;
+    renderGlassBlur();
+    void applyGlass(glassCheckbox.checked);
+  });
+
+  // 슬라이더를 움직이는 동안에도 바로 보이도록 input마다 위젯에 반영한다.
+  const glassBlurSlider = $("glass-blur") as HTMLInputElement;
+  glassBlurSlider.addEventListener("input", () => {
+    const px = Number(glassBlurSlider.value);
+    configDraft.glass_blur = px;
+    $("glass-blur-value").textContent = `${px}px`;
+    void applyGlassBlur(px);
+  });
+
   for (const kind of Object.keys(UI) as Vcs[]) {
     const checkbox = $(UI[kind].toggleId) as HTMLInputElement;
     checkbox.addEventListener("change", () => {
@@ -538,6 +622,7 @@ async function boot() {
     });
     await listen("settings-cancelled", () => {
       void revertAlwaysOnTop();
+      void revertGlass();
     });
   } catch (e) {
     showBootError(String(e));
