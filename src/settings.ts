@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DEFAULT_GLASS_BLUR, glassBlur, glassEnabled } from "./glass";
 import { normalizeOpenTarget, renderOpenTargetPicker } from "./open-target-picker";
 import { DEFAULT_OPEN_TARGET } from "./open-targets";
@@ -199,13 +200,19 @@ function $(id: string): HTMLElement {
   return el;
 }
 
+/**
+ * 머리 줄은 본문을 갈아엎기 전에 떼어 두었다가 다시 붙인다. OS 제목 표시줄이 없어서
+ * 이 줄이 사라지면 창을 끌 수 없다. 노드를 그대로 옮기므로 닫기 X·끌기 리스너도 살아 있다.
+ */
 function showBootError(message: string) {
+  const titlebar = document.querySelector(".settings-titlebar");
   document.body.innerHTML = `
-    <div class="settings-window" style="padding:24px">
+    <div class="settings-window" style="padding:0 24px 24px">
       <h1>설정 로드 실패</h1>
       <p class="test-result fail">${message}</p>
       <button id="btn-error-close" class="btn secondary wide" type="button">닫기</button>
     </div>`;
+  if (titlebar) document.querySelector(".settings-window")?.prepend(titlebar);
   document.getElementById("btn-error-close")?.addEventListener("click", () => {
     void closeWindow();
   });
@@ -607,9 +614,32 @@ function bindUi() {
   autostartCheckbox.addEventListener("change", () => {
     void setAutostart(autostartCheckbox.checked);
   });
+}
 
+/**
+ * 머리 줄 — OS 제목 표시줄 대신이다(tauri.conf.json decorations: false). 닫기 X·Esc는
+ * 취소 버튼과 같은 closeWindow()로 닫아 즉시 반영해 둔 창 플래그·배경 흐림을 되돌리고,
+ * 부팅 전에 걸어 두어 설정 로드가 실패해도 닫을 수 있게 한다. 끌기는 data-tauri-drag-region
+ * 대신 직접 처리한다. 그 속성은 두 번 누르면 창을 최대화해 설정 창에 맞지 않고, 붙인 요소를
+ * 직접 누를 때만 끌려서 제목 위를 따로 챙겨야 한다(Frond titlebar.ts와 같은 방식).
+ */
+function initTitlebar() {
+  $("btn-titlebar-close").addEventListener("click", () => {
+    void closeWindow();
+  });
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") void closeWindow();
+  });
+  document.querySelector(".settings-titlebar")?.addEventListener("mousedown", (event) => {
+    const e = event as MouseEvent;
+    if (e.button !== 0 || e.detail > 1) return;
+    if ((e.target as Element).closest("button, a, input, select")) return;
+    e.preventDefault();
+    try {
+      void getCurrentWindow().startDragging();
+    } catch {
+      /* browser preview */
+    }
   });
 }
 
@@ -629,4 +659,5 @@ async function boot() {
   }
 }
 
+initTitlebar();
 void boot();

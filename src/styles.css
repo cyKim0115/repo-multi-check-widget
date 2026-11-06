@@ -977,19 +977,77 @@ html.glass .repo-scroll-wrap:has(.repo-fade--bottom.visible) .repo-scroll {
   overflow: auto;
 }
 
+/* 위 여백은 머리 줄(높이 44px)이 대신 가진다. */
 .settings-window {
   max-width: 560px;
   margin: 0 auto;
-  padding: 20px 24px 28px;
+  padding: 0 24px 28px;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.settings-window .settings-header h1 {
+/* 머리 줄 — 설정 창은 OS 제목 표시줄 없이(decorations: false) 뜬다. Frond 설정 팝업처럼
+   같은 바탕 위에 작은 제목과 닫기만 둔다. 줄의 빈 곳을 끌면 창이 움직이고(settings.ts),
+   body가 스크롤해도 위에 붙어 있어 언제든 끌고 닫을 수 있다. 좌우는 .settings-window
+   패딩만큼 넓혀 끌 곳이 창 끝까지 닿게 하고, 바탕은 .settings-window-body와 같은 색으로
+   둔다. 글자 선택은 맨 위 * 규칙이 막고, 설정 창에서 이를 푸는 곳은 입력칸뿐이다. */
+.settings-titlebar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  margin: 0 -24px;
+  padding: 0 10px 0 24px;
+  background: #16181c;
+  cursor: default;
+}
+
+.settings-titlebar h1 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.titlebar-close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.titlebar-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+}
+
+.titlebar-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .settings-subtitle {
