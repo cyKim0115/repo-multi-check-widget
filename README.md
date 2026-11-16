@@ -1,5 +1,10 @@
 # Repo Multi-Check Widget
 
+![Windows 10 · 11](https://img.shields.io/badge/Windows-10%20%C2%B7%2011-3f6150)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-3f6150)
+![Git · SVN](https://img.shields.io/badge/repos-Git%20%C2%B7%20SVN-3f6150)
+![View · pull](https://img.shields.io/badge/mode-view%20%C2%B7%20pull-96bea1)
+
 Windows 바탕화면용 위젯 — 여러 Git·SVN 저장소의 **브랜치·변경·동기화 상태**를 한눈에 확인하고, 밀린 커밋은 버튼 하나로 받습니다.
 
 ## 실행
